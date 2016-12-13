@@ -60,3 +60,50 @@ class PowerBlobBot(Bot):
                 return Move(square, random.choice((NORTH, WEST, SOUTH, EAST)))
 
         return Move(square, STILL)
+
+
+def weighted_choice(choices):
+    total = sum(w for c, w in choices)
+    r = random.uniform(0, total)
+    upto = 0
+    for c, w in choices:
+        if upto + w >= r:
+            return c
+        upto += w
+
+    assert False, "shouldnt get here"
+
+
+class HeuristicBot(Bot):
+    def __init__(self):
+        super(HeuristicBot, self).__init__("HeuristicBot")
+
+    def assign_move(self, square):
+        heuristic = self.get_heuristic(square)
+        choice = weighted_choice(heuristic.items())
+        return Move(square, choice)
+
+    def get_heuristic(self, square):
+        if square.strength <= 0:
+            return {STILL: 1}
+        else:
+            for direction, neighbor in enumerate(self.game_map.neighbors(square)):
+                if neighbor.owner != self.my_id and neighbor.strength < square.strength:
+                    return {direction: 1}
+
+            if all(neighbor.owner == self.my_id for neighbor in self.game_map.neighbors(square)):
+                all_targets = [(s, self.game_map.get_distance(square, s))
+                               for s in chain(*self.game_map.contents)
+                               if s.owner != self.my_id]
+
+                closest, _ = max(all_targets, key=lambda o: o[0].production / o[1])
+
+                dx = self.game_map.get_direction(square.x, closest.x, self.game_map.width)
+                choice_x = (WEST, abs(dx)) if dx < 0 else (EAST, dx)
+
+                dy = self.game_map.get_direction(square.y, closest.y, self.game_map.height)
+                choice_y = (NORTH, abs(dy)) if dy < 0 else (SOUTH, dy)
+
+                return dict([choice_x, choice_y])
+
+            return {STILL: 1}

@@ -71,6 +71,15 @@ class GameMap:
         dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0), (0, 0))[direction]
         return self.contents[(square.y + dy) % self.height][(square.x + dx) % self.width]
 
+    def get_direction(self, coord1, coord2, room):
+        "Returns shortest direction between two coordinates (X or Y). Need this because of wrapparound"
+        d_straight = coord2 - coord1
+        d_wrapped = (coord2 - room) - coord1
+        if abs(d_straight) < abs(d_wrapped):
+            return d_straight
+        else:
+            return d_wrapped
+
     def get_distance(self, sq1, sq2):
         "Returns Manhattan distance between two squares."
         dx = min(abs(sq1.x - sq2.x), sq1.x + self.width - sq2.x, sq2.x + self.width - sq1.x)
