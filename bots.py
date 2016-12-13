@@ -1,6 +1,7 @@
 import hlt
-from hlt import NORTH, EAST, SOUTH, WEST, STILL, Move, Square
+from hlt import NORTH, EAST, SOUTH, WEST, STILL, Move
 import random
+from itertools import chain
 
 
 class Bot(object):
@@ -39,5 +40,23 @@ class BlobBot(Bot):
 
         if all(neighbor.owner == self.my_id for neighbor in self.game_map.neighbors(square)):
             return Move(square, random.choice((NORTH, WEST, SOUTH, EAST)))
+
+        return Move(square, STILL)
+
+
+class PowerBlobBot(Bot):
+    def __init__(self):
+        super(PowerBlobBot, self).__init__("PowerBlobBot")
+
+    def assign_move(self, square):
+        for direction, neighbor in enumerate(self.game_map.neighbors(square)):
+            if neighbor.owner != self.my_id and neighbor.strength < square.strength:
+                return Move(square, direction)
+
+        if all(neighbor.owner == self.my_id for neighbor in self.game_map.neighbors(square)):
+            if square.strength < 128:
+                return Move(square, STILL)
+            else:
+                return Move(square, random.choice((NORTH, WEST, SOUTH, EAST)))
 
         return Move(square, STILL)

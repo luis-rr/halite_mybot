@@ -1,3 +1,3 @@
-from bots import BlobBot as MyBot
+from bots import PowerBlobBot as MyBot
 
 MyBot().run()
