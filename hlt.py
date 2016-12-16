@@ -4,7 +4,7 @@ from itertools import chain, zip_longest
 
 
 def grouper(iterable, n, fillvalue=None):
-    "Collect data into fixed-length chunks or blocks"
+    """Collect data into fixed-length chunks or blocks"""
     # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
     args = [iter(iterable)] * n
     return zip_longest(*args, fillvalue=fillvalue)
@@ -14,7 +14,7 @@ NORTH, EAST, SOUTH, WEST, STILL = range(5)
 
 
 def opposite_cardinal(direction):
-    "Returns the opposing cardinal direction."
+    """Returns the opposing cardinal direction."""
     return (direction + 2) % 4 if direction != STILL else STILL
 
 
@@ -27,13 +27,14 @@ Move = namedtuple('Move', 'square direction')
 class GameMap:
     def __init__(self, size_string, production_string, map_string=None):
         self.width, self.height = tuple(map(int, size_string.split()))
-        self.production = tuple(tuple(map(int, substring)) for substring in grouper(production_string.split(), self.width))
+        self.production = tuple(tuple(map(int, substring))
+                                for substring in grouper(production_string.split(), self.width))
         self.contents = None
         self.get_frame(map_string)
         self.starting_player_count = len(set(square.owner for square in self)) - 1
 
     def get_frame(self, map_string=None):
-        "Updates the map information from the latest frame provided by the Halite game environment."
+        """Updates the map information from the latest frame provided by the Halite game environment."""
         if map_string is None:
             map_string = get_string()
         split_string = map_string.split()
@@ -53,26 +54,29 @@ class GameMap:
                                           self.production))]
 
     def __iter__(self):
-        "Allows direct iteration over all squares in the GameMap instance."
+        """Allows direct iteration over all squares in the GameMap instance."""
         return chain.from_iterable(self.contents)
 
     def neighbors(self, square, n=1, include_self=False):
-        "Iterable over the n-distance neighbors of a given square.  For single-step neighbors, the enumeration index provides the direction associated with the neighbor."
+        """Iterable over the n-distance neighbors of a given square.  For single-step neighbors,
+        the enumeration index provides the direction associated with the neighbor."""
         assert isinstance(include_self, bool)
         assert isinstance(n, int) and n > 0
         if n == 1:
-            combos = ((0, -1), (1, 0), (0, 1), (-1, 0), (0, 0))   # NORTH, EAST, SOUTH, WEST, STILL ... matches indices provided by enumerate(game_map.neighbors(square))
+            # NORTH, EAST, SOUTH, WEST, STILL ... matches indices provided by enumerate(game_map.neighbors(square))
+            combos = ((0, -1), (1, 0), (0, 1), (-1, 0), (0, 0))
         else:
             combos = ((dx, dy) for dy in range(-n, n+1) for dx in range(-n, n+1) if abs(dx) + abs(dy) <= n)
-        return (self.contents[(square.y + dy) % self.height][(square.x + dx) % self.width] for dx, dy in combos if include_self or dx or dy)
+        return (self.contents[(square.y + dy) % self.height][(square.x + dx) % self.width]
+                for dx, dy in combos if include_self or dx or dy)
 
     def get_target(self, square, direction):
-        "Returns a single, one-step neighbor in a given direction."
+        """"Returns a single, one-step neighbor in a given direction."""
         dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0), (0, 0))[direction]
         return self.contents[(square.y + dy) % self.height][(square.x + dx) % self.width]
 
     def get_direction(self, coord1, coord2, room):
-        "Returns shortest direction between two coordinates (X or Y). Need this because of wrapparound"
+        """Returns shortest direction between two coordinates (X or Y). Need this because of wrapparound"""
         d_straight = coord2 - coord1
         d_wrapped = (coord2 - room) - coord1
         if abs(d_straight) < abs(d_wrapped):
@@ -81,7 +85,7 @@ class GameMap:
             return d_wrapped
 
     def get_distance(self, sq1, sq2):
-        "Returns Manhattan distance between two squares."
+        """"Returns Manhattan distance between two squares."""
         dx = min(abs(sq1.x - sq2.x), sq1.x + self.width - sq2.x, sq2.x + self.width - sq1.x)
         dy = min(abs(sq1.y - sq2.y), sq1.y + self.height - sq2.y, sq2.y + self.height - sq1.y)
         return dx + dy
@@ -102,9 +106,9 @@ def get_string():
 
 
 def get_init():
-    playerID = int(get_string())
+    player_id = int(get_string())
     m = GameMap(get_string(), get_string())
-    return playerID, m
+    return player_id, m
 
 
 def send_init(name):
@@ -112,9 +116,11 @@ def send_init(name):
 
 
 def translate_cardinal(direction):
-    "Translate direction constants used by this Python-based bot framework to that used by the official Halite game environment."
+    """"Translate direction constants used by this Python-based bot framework
+    to that used by the official Halite game environment."""
     return (direction + 1) % 5
 
 
 def send_frame(moves):
-    send_string(' '.join(str(move.square.x) + ' ' + str(move.square.y) + ' ' + str(translate_cardinal(move.direction)) for move in moves))
+    send_string(' '.join(str(move.square.x) + ' ' + str(move.square.y) + ' ' +
+                         str(translate_cardinal(move.direction)) for move in moves))
