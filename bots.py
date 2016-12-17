@@ -2,6 +2,7 @@ import hlt
 from hlt import NORTH, EAST, SOUTH, WEST, STILL, Move
 import random
 import numpy as np
+import logging
 
 
 class Bot(object):
@@ -79,14 +80,19 @@ class PowerBlobBot(Bot):
 
 
 class HeuristicBot(Bot):
-    def __init__(self):
-        super(HeuristicBot, self).__init__("HeuristicBot")
+    def __init__(self, name=None):
+        super(HeuristicBot, self).__init__(name or "HeuristicBot")
+        self.min_strength = 32
+
+    def get_heuristic(self, others_production, others_distance, others_strength):
+        return (np.square(others_production) /
+                (np.square(others_distance) * np.maximum(others_strength, 1)))
 
     def assign_moves(self, rows, cols):
         moves = []
 
         for i, j in zip(rows, cols):
-            if self.game.strength[i, j] > 16:
+            if self.game.strength[i, j] > self.min_strength:
                 others = np.array(np.where(self.game.owners != self.my_id))
 
                 others_strength = self.game.strength[[others[0], others[1]]]
@@ -95,7 +101,7 @@ class HeuristicBot(Bot):
                 others_direction = hlt.get_direction_to_target_mask(i, j, others, self.game.owners.shape)
                 others_distance = np.sum(np.abs(others_direction), axis=0)
 
-                heuristic = others_production / (others_distance * np.maximum(others_strength, 1))
+                heuristic = self.get_heuristic(others_production, others_distance, others_strength)
                 closest_idx = np.argmax(heuristic)
 
                 cardinals = hlt.direction_to_cardinal(others_direction[:, closest_idx])
@@ -103,6 +109,8 @@ class HeuristicBot(Bot):
                 probs = 1 / np.array(probs)  # invert so we close the shortest distance first
                 probs /= np.sum(probs)
                 d = np.random.choice(options, p=probs)
+
+                logging.debug('from %s to %s %s', (i, j), others_direction[:, closest_idx], d)
 
                 moves.append(Move(j, i, d))
             else:
