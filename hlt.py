@@ -1,6 +1,7 @@
 import sys
 from collections import namedtuple
 from itertools import chain, zip_longest
+import numpy as np
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -21,7 +22,7 @@ def opposite_cardinal(direction):
 Square = namedtuple('Square', 'x y owner strength production')
 
 
-Move = namedtuple('Move', 'square direction')
+Move = namedtuple('Move', 'x y direction')
 
 
 class GameMap:
@@ -90,6 +91,80 @@ class GameMap:
         dy = min(abs(sq1.y - sq2.y), sq1.y + self.height - sq2.y, sq2.y + self.height - sq1.y)
         return dx + dy
 
+
+class NumpyGameMap:
+    """Just like GameMap but loads the info in a numpy array"""
+
+    def __init__(self, size_string, production_string, map_string=None):
+
+        self.width, self.height = tuple(map(int, size_string.split()))
+
+        self.owners = None
+        self.strength = None
+        self.production = np.array([int(s) for s in production_string.split()]).reshape(self.height, self.width)
+
+        self.get_frame(map_string)
+
+    def get_frame(self, map_string=None):
+        """Updates the map information from the latest frame provided by the Halite game environment."""
+        map_string = map_string or get_string()
+        split_string = map_string.split()
+
+        owners = []
+        counters = []
+        while sum(counters) < self.width * self.height:
+            counters.append(int(split_string.pop(0)))
+            owners.append(int(split_string.pop(0)))
+        self.owners = np.repeat(owners, counters).reshape(self.height, self. width)
+
+        assert len(split_string) == self.width * self.height
+        self.strength = np.array([int(s) for s in split_string]).reshape(self.height, self.width)
+
+    def neighbours_address(self, i, j):
+        """Iterable over the n-distance neighbors of a given square.  For single-step neighbors,
+        the enumeration index provides the direction associated with the neighbor."""
+        # NORTH, EAST, SOUTH, WEST, STILL ... matches indices provided by enumerate(game_map.neighbors(square))
+        combos = ((-1, 0), (0, 1), (1, 0), (0, -1), (0, 0))
+        return (((i + dx) % self.height, (j + dy) % self.width) for dx, dy in combos)
+
+
+def get_direction_to_target_mask(i, j, others, shape):
+    """calculate, for every pair of coordinates in 'others', the shortest 2D directional vector
+    (watch out for wraparound)"""
+    distance_straight = others - np.array([[i], [j]])
+    distance_wrapped = (others - np.array([[shape[0]], [shape[1]]])) - np.array([[i], [j]])
+
+    better_straight = np.abs(distance_straight) < np.abs(distance_wrapped)
+
+    shortest = np.empty(shape=distance_straight.shape, dtype=np.int)
+    shortest[better_straight] = distance_straight[better_straight]
+    shortest[~better_straight] = distance_wrapped[~better_straight]
+
+    return shortest
+
+
+def direction_to_cardinal(direction):
+    """convert a tuple of integers indicating a 2D vector into a dictionary where the key is a cardinal actions and the
+    value the number of times it needs to be repeated"""
+
+    cardinals = {}
+
+    if direction[0] < 0:
+        cardinals[NORTH] = abs(direction[0])
+    elif direction[0] > 0:
+        cardinals[SOUTH] = abs(direction[0])
+
+    if direction[1] < 0:
+        cardinals[WEST] = abs(direction[1])
+    elif direction[1] > 0:
+        cardinals[EAST] = abs(direction[1])
+
+    if not cardinals:
+        return {STILL: 1}
+    else:
+        return cardinals
+
+
 #################################################################
 # Functions for communicating with the Halite game environment  #
 #################################################################
@@ -107,7 +182,7 @@ def get_string():
 
 def get_init():
     player_id = int(get_string())
-    m = GameMap(get_string(), get_string())
+    m = NumpyGameMap(get_string(), get_string())
     return player_id, m
 
 
@@ -122,5 +197,5 @@ def translate_cardinal(direction):
 
 
 def send_frame(moves):
-    send_string(' '.join(str(move.square.x) + ' ' + str(move.square.y) + ' ' +
+    send_string(' '.join(str(move.x) + ' ' + str(move.y) + ' ' +
                          str(translate_cardinal(move.direction)) for move in moves))

@@ -1,23 +1,23 @@
 import hlt
 from hlt import NORTH, EAST, SOUTH, WEST, STILL, Move
 import random
-from itertools import chain
+import numpy as np
 
 
 class Bot(object):
-    def __init__(self, name):
-        self.my_id, self.game_map = hlt.get_init()
+    def __init__(self, name='Bot'):
+        self.my_id, self.game = hlt.get_init()
         hlt.send_init(name)
 
-    def assign_move(self, square):
-        return Move(square, STILL)
+    def assign_moves(self, rows, cols):
+        moves = np.array([STILL] * rows.size)
+        return [Move(j, i, m) for (i, j, m) in zip(rows, cols, moves)]
 
     def run(self):
-
         while True:
-            self.game_map.get_frame()
-
-            moves = [self.assign_move(square) for square in self.game_map if square.owner == self.my_id]
+            self.game.get_frame()
+            rows, cols = np.where(self.game.owners == self.my_id)
+            moves = self.assign_moves(rows, cols)
             hlt.send_frame(moves)
 
 
@@ -25,85 +25,87 @@ class RandomBot(Bot):
     def __init__(self):
         super(RandomBot, self).__init__("RandomBot")
 
-    def assign_move(self, square):
-        return Move(square, random.choice((NORTH, EAST, SOUTH, WEST, STILL)))
+    def assign_moves(self, rows, cols):
+        moves = np.random.choice((NORTH, EAST, SOUTH, WEST, STILL), rows.size)
+        return [Move(j, i, m) for (i, j, m) in zip(rows, cols, moves)]
 
 
 class BlobBot(Bot):
     def __init__(self):
         super(BlobBot, self).__init__("BlobBot")
 
-    def assign_move(self, square):
-        for direction, neighbor in enumerate(self.game_map.neighbors(square)):
-            if neighbor.owner != self.my_id and neighbor.strength < square.strength:
-                return Move(square, direction)
+    def assign_move(self, i, j):
 
-        if all(neighbor.owner == self.my_id for neighbor in self.game_map.neighbors(square)):
-            return Move(square, random.choice((NORTH, WEST, SOUTH, EAST)))
+        my_strength = self.game.strength[i, j]
+        for direction, address in enumerate(self.game.neighbours_address(i, j)):
+            n_owner = self.game.owner[address[0], address[1]]
+            n_strength = self.game.strength[address[0], address[1]]
+            if n_owner != self.my_id and n_strength < my_strength:
+                return Move(j, i, direction)
 
-        return Move(square, STILL)
+        if all(self.game.owners[address[0], address[1]] == self.my_id
+               for address in self.game.neighbours_address(i, j)):
+            return Move(j, i, random.choice((NORTH, WEST, SOUTH, EAST)))
+
+        return Move(j, i, STILL)
+
+    def assign_moves(self, rows, cols):
+        return [self.assign_move(i, j) for (i, j) in zip(rows, cols)]
 
 
 class PowerBlobBot(Bot):
     def __init__(self):
         super(PowerBlobBot, self).__init__("PowerBlobBot")
 
-    def assign_move(self, square):
-        for direction, neighbor in enumerate(self.game_map.neighbors(square)):
-            if neighbor.owner != self.my_id and neighbor.strength < square.strength:
-                return Move(square, direction)
+    def assign_move(self, i, j):
+        my_strength = self.game.strength[i, j]
+        for direction, address in enumerate(self.game.neighbours_address(i, j)):
+            n_owner = self.game.owners[address[0], address[1]]
+            n_strength = self.game.strength[address[0], address[1]]
+            if n_owner != self.my_id and n_strength < my_strength:
+                return Move(j, i, direction)
 
-        if all(neighbor.owner == self.my_id for neighbor in self.game_map.neighbors(square)):
-            if square.strength < 128:
-                return Move(square, STILL)
+        if all(self.game.owners[address[0], address[1]] == self.my_id
+               for address in self.game.neighbours_address(i, j)):
+            if my_strength < 128:
+                return Move(j, i, STILL)
             else:
-                return Move(square, random.choice((NORTH, WEST, SOUTH, EAST)))
+                return Move(j, i, random.choice((NORTH, WEST, SOUTH, EAST)))
 
-        return Move(square, STILL)
+        return Move(j, i, STILL)
 
-
-def weighted_choice(choices):
-    total = sum(w for c, w in choices)
-    r = random.uniform(0, total)
-    upto = 0
-    for c, w in choices:
-        if upto + w >= r:
-            return c
-        upto += w
-
-    assert False, "shouldnt get here"
+    def assign_moves(self, rows, cols):
+        return [self.assign_move(i, j) for (i, j) in zip(rows, cols)]
 
 
 class HeuristicBot(Bot):
     def __init__(self):
         super(HeuristicBot, self).__init__("HeuristicBot")
 
-    def assign_move(self, square):
-        heuristic = self.get_heuristic(square)
-        choice = weighted_choice(heuristic.items())
-        return Move(square, choice)
+    def assign_moves(self, rows, cols):
+        moves = []
 
-    def get_heuristic(self, square):
-        if square.strength <= 0:
-            return {STILL: 1}
-        else:
-            for direction, neighbor in enumerate(self.game_map.neighbors(square)):
-                if neighbor.owner != self.my_id and neighbor.strength < square.strength:
-                    return {direction: 1}
+        for i, j in zip(rows, cols):
+            if self.game.strength[i, j] > 16:
+                others = np.array(np.where(self.game.owners != self.my_id))
 
-            if all(neighbor.owner == self.my_id for neighbor in self.game_map.neighbors(square)):
-                all_targets = [(s, self.game_map.get_distance(square, s))
-                               for s in chain(*self.game_map.contents)
-                               if s.owner != self.my_id]
+                others_strength = self.game.strength[[others[0], others[1]]]
+                others_production = self.game.production[[others[0], others[1]]]
 
-                closest, _ = max(all_targets, key=lambda o: o[0].production / o[1])
+                others_direction = hlt.get_direction_to_target_mask(i, j, others, self.game.owners.shape)
+                others_distance = np.sum(np.abs(others_direction), axis=0)
 
-                dx = self.game_map.get_direction(square.x, closest.x, self.game_map.width)
-                choice_x = (WEST, abs(dx)) if dx < 0 else (EAST, dx)
+                heuristic = others_production / (others_distance * np.maximum(others_strength, 1))
+                closest_idx = np.argmax(heuristic)
 
-                dy = self.game_map.get_direction(square.y, closest.y, self.game_map.height)
-                choice_y = (NORTH, abs(dy)) if dy < 0 else (SOUTH, dy)
+                cardinals = hlt.direction_to_cardinal(others_direction[:, closest_idx])
+                options, probs = zip(*cardinals.items())
+                probs = 1 / np.array(probs)  # invert so we close the shortest distance first
+                probs /= np.sum(probs)
+                d = np.random.choice(options, p=probs)
 
-                return dict([choice_x, choice_y])
+                moves.append(Move(j, i, d))
+            else:
+                moves.append(Move(j, i, STILL))
 
-            return {STILL: 1}
+        return moves
